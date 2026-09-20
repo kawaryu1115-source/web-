@@ -1,1 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DNS＆IPアドレス体験シミュレータ</title>
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome (CDN) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- オリジナルのCSS -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans min-h-screen flex flex-col">
+    <!-- ヘッダー -->
+    <header class="bg-blue-600 text-white p-4 shadow-md text-center">
+        <h1 class="text-2xl font-bold"><i class="fa-solid fa-network-wired"></i> Webページが表示されるまで体験シミュレータ</h1>
+        <p class="text-sm mt-1">ドメイン名からIPアドレスへの変換（DNS）と、Webサーバーへのアクセスを体験しよう！</p>
+    </header>
 
+    <!-- メインコンテンツ -->
+    <main class="flex-grow p-4 md:p-8 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-8 relative">
+        
+        <!-- 教育用ふきだし（全体） -->
+        <div id="guide-bubble" class="absolute top-[-20px] left-1/2 transform -translate-x-1/2 bg-yellow-100 border-2 border-yellow-400 text-yellow-800 p-3 rounded-lg shadow-lg font-bold z-10 transition-opacity duration-300">
+            <i class="fa-solid fa-lightbulb text-yellow-500"></i> <span id="guide-text">まずは左側のツールで、URLの「ドメイン名」を入力して検索してみよう！</span>
+        </div>
+
+        <!-- セクションA: DNSルックアップツール -->
+        <section class="bg-white rounded-xl shadow-lg p-6 border-t-4 border-blue-500 flex flex-col relative mt-8 md:mt-0">
+            <h2 class="text-xl font-bold mb-4 text-blue-700 border-b pb-2"><i class="fa-solid fa-address-book"></i> DNSルックアップツール</h2>
+            <p class="text-sm text-gray-600 mb-4">人間が覚えやすい「ドメイン名」から、コンピュータ用の住所「IPアドレス」を調べます。</p>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-bold mb-2">調べたいドメイン名 (例: google.com)</label>
+                <div class="flex">
+                    <input type="text" id="domain-input" placeholder="yahoo.co.jp" class="flex-grow border border-gray-300 rounded-l-lg p-3 outline-none focus:border-blue-500" onfocus="showGuide('人間が覚えやすいドメイン名だね。普段はこれを入力しているよ。')">
+                    <button id="dns-btn" class="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-r-lg font-bold transition-colors">
+                        調べる <i class="fa-solid fa-magnifying-glass"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- DNS ローディング表示 -->
+            <div id="dns-loading" class="hidden flex-col items-center justify-center py-8">
+                <div class="loader mb-4"></div>
+                <p class="text-blue-600 font-bold animate-pulse">DNSサーバーに問い合わせ中...</p>
+                <p class="text-xs text-gray-500 mt-2">インターネットの電話帳（DNS）を探しています</p>
+            </div>
+
+            <!-- DNS 結果表示 -->
+            <div id="dns-result" class="hidden mt-4 bg-gray-50 rounded-lg border border-gray-200 p-6 text-center shadow-inner relative">
+                <p class="text-sm text-gray-500 mb-2">見つかったIPアドレス</p>
+                <p id="ip-display" class="text-3xl font-mono font-bold text-green-600 tracking-wider mb-4">---.---.---.---</p>
+                <button id="copy-btn" class="bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded shadow text-sm transition-colors">
+                    <i class="fa-regular fa-copy"></i> IPアドレスをコピー
+                </button>
+            </div>
+        </section>
+
+        <!-- セクションB: 疑似Webブラウザ -->
+        <section class="bg-white rounded-xl shadow-lg border-t-4 border-green-500 flex flex-col relative mt-8 md:mt-0 overflow-hidden">
+            <!-- ブラウザUI ヘッダー -->
+            <div class="bg-gray-200 p-3 flex items-center border-b border-gray-300">
+                <div class="flex space-x-2 mr-4">
+                    <div class="w-3 h-3 rounded-full bg-red-400"></div>
+                    <div class="w-3 h-3 rounded-full bg-yellow-400"></div>
+                    <div class="w-3 h-3 rounded-full bg-green-400"></div>
+                </div>
+                <div class="flex-grow flex">
+                    <span class="bg-gray-300 text-gray-600 px-3 py-1 rounded-l-md text-sm border border-gray-400 border-r-0"><i class="fa-solid fa-lock"></i> IPアドレス</span>
+                    <input type="text" id="browser-input" placeholder="IPアドレスを入力" class="flex-grow p-1 px-3 text-sm border border-gray-400 outline-none font-mono" onfocus="showGuide('数字の住所（IPアドレス）を使って、直接サーバーにアクセスしてみよう！')">
+                    <button id="access-btn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-1 rounded-r-md text-sm font-bold transition-colors">
+                        アクセス <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- ブラウザ コンテンツエリア -->
+            <div id="browser-content" class="flex-grow bg-white relative flex flex-col items-center justify-center min-h-[300px]">
+                
+                <!-- HTTPリクエスト ローディング表示 -->
+                <div id="http-loading" class="hidden flex-col items-center justify-center absolute inset-0 bg-white bg-opacity-90 z-10">
+                    <div class="loader-green mb-4"></div>
+                    <p class="text-green-600 font-bold animate-pulse">WebサーバーへHTTPリクエスト送信中...</p>
+                    <p class="text-xs text-gray-500 mt-2 text-center px-4">入力されたIPアドレスのコンピュータに<br>「HTMLファイルをください」とお願いしています</p>
+                </div>
+
+                <!-- ダミーWebページ表示領域 -->
+                <div id="web-page-render" class="w-full h-full p-4 overflow-y-auto">
+                    <div class="text-center text-gray-400 mt-10">
+                        <i class="fa-solid fa-globe text-6xl mb-4"></i>
+                        <p>ここにWebページが表示されます</p>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <!-- JavaScript -->
+    <script src="script.js"></script>
+</body>
+</html>
