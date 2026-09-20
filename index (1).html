@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DNS＆IPアドレス体験シミュレータ</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Zen+Maru+Gothic:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#EEF3F8; --ink:#12263F; --sub:#51627A; --line:#D5DEE9;
+    --dns:#0F8B8D; --dns-soft:#E1F4F3;
+    --web:#3B6FE0; --web-soft:#E8EFFD;
+    --plate:#12263F; --amber:#F5B921;
+  }
+  html{ scroll-behavior:smooth; }
+  body{ background:var(--bg); color:var(--ink); font-family:'Zen Maru Gothic','Hiragino Maru Gothic ProN','Yu Gothic',sans-serif; }
+  .mono{ font-family:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace; }
+
+  :focus-visible{ outline:3px solid #F5B921; outline-offset:2px; }
+
+  /* 手順ストリップ */
+  .step{ display:flex; align-items:center; gap:.6rem; padding:.55rem .9rem; border-radius:999px; background:#fff; border:1px solid var(--line); color:var(--sub); font-weight:700; font-size:.9rem; transition:all .25s; }
+  .step .n{ width:1.6rem; height:1.6rem; border-radius:50%; display:grid; place-items:center; background:var(--line); color:var(--sub); font-size:.8rem; flex:none; transition:all .25s; }
+  .step.on{ background:var(--ink); color:#fff; border-color:var(--ink); }
+  .step.on .n{ background:var(--amber); color:var(--ink); }
+  .step.done .n{ background:var(--dns); color:#fff; }
+
+  /* 解説ふきだし */
+  .bubble-wrap{ display:flex; gap:.75rem; align-items:flex-start; }
+  .avatar{ flex:none; width:2.75rem; height:2.75rem; border-radius:50%; display:grid; place-items:center; color:#fff; font-size:1.15rem; }
+  .bubble{ position:relative; flex:1; padding:.7rem 1rem; border-radius:6px 16px 16px 16px; font-size:.95rem; line-height:1.6; font-weight:500; min-height:3rem; }
+  .bubble::before{ content:""; position:absolute; left:-8px; top:12px; border:8px solid transparent; border-left:0; border-right-color:var(--tail); }
+  .bubble.swap{ animation:pop .3s ease-out; }
+  @keyframes pop{ from{ transform:scale(.97); opacity:.4; } to{ transform:scale(1); opacity:1; } }
+
+  /* IPアドレスのプレート */
+  .plate{ background:var(--plate); border-radius:14px; padding:1.1rem 1rem; box-shadow:inset 0 0 0 3px var(--plate), inset 0 0 0 5px #3C5273; display:flex; flex-wrap:wrap; justify-content:center; align-items:baseline; gap:.15rem; }
+  .plate .oct{ color:var(--amber); font-size:clamp(1.9rem,6vw,2.9rem); font-weight:700; letter-spacing:.02em; display:inline-block; animation:flip .5s cubic-bezier(.2,.8,.3,1) both; }
+  .plate .dot{ color:#8DA2C0; font-size:clamp(1.9rem,6vw,2.9rem); font-weight:700; }
+  @keyframes flip{ from{ transform:translateY(-.6em) rotateX(80deg); opacity:0; } to{ transform:none; opacity:1; } }
+
+  .spinner{ width:2.6rem; height:2.6rem; border-radius:50%; border:4px solid var(--dns-soft); border-top-color:var(--dns); animation:spin .9s linear infinite; }
+  .spinner.web{ border-color:var(--web-soft); border-top-color:var(--web); }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  /* パケットが進む線 */
+  .track{ position:relative; height:6px; border-radius:3px; background:repeating-linear-gradient(90deg,var(--line) 0 8px,transparent 8px 14px); overflow:hidden; }
+  .track i{ position:absolute; top:-3px; width:12px; height:12px; border-radius:50%; background:var(--dns); animation:run 1.2s linear infinite; }
+  .track.web i{ background:var(--web); }
+  @keyframes run{ from{ left:-12px; } to{ left:100%; } }
+
+  /* ブラウザ枠 */
+  .browser{ border:1px solid #BFCBDB; border-radius:14px; overflow:hidden; background:#fff; }
+  .chrome{ background:#DCE4EF; padding:.5rem .6rem 0; }
+  .tab{ background:#fff; border-radius:10px 10px 0 0; padding:.4rem .8rem; font-size:.8rem; display:inline-flex; gap:.5rem; align-items:center; max-width:70%; font-weight:500; }
+  .toolbar{ background:#fff; padding:.55rem .6rem; display:flex; gap:.5rem; align-items:center; border-bottom:1px solid var(--line); }
+  .urlbar{ flex:1; min-width:0; display:flex; align-items:center; gap:.5rem; background:#EEF3F8; border-radius:999px; padding:0 .9rem; border:2px solid transparent; }
+  .urlbar:focus-within{ border-color:var(--web); background:#fff; }
+  .urlbar input{ flex:1; min-width:0; background:transparent; padding:.55rem 0; outline:none; font-size:.95rem; }
+  .viewport{ min-height:22rem; position:relative; }
+
+  .btn{ font-weight:700; border-radius:999px; padding:.65rem 1.2rem; transition:transform .1s, background .2s; display:inline-flex; align-items:center; justify-content:center; gap:.5rem; }
+  .btn:active:not(:disabled){ transform:translateY(1px); }
+  .btn:disabled{ opacity:.55; cursor:not-allowed; }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; }
+  }
+</style>
+</head>
+<body class="min-h-screen">
+
+<header class="max-w-6xl mx-auto px-4 pt-8 pb-4">
+  <h1 class="text-2xl md:text-4xl font-black leading-tight">DNS＆IPアドレス体験シミュレータ</h1>
+  <p class="mt-2 text-[var(--sub)] font-medium">URLの裏側で何が起きているのか、手を動かして確かめよう。（このツールは学習用の疑似動作です。実際のインターネットには接続しません）</p>
+
+  <ol class="mt-5 flex flex-wrap gap-2" id="steps" aria-label="操作手順">
+    <li class="step on" data-step="1"><span class="n">1</span>好きなサイトのURLを入力</li>
+    <li class="step" data-step="2"><span class="n">2</span>表示された数字の列をコピー</li>
+    <li class="step" data-step="3"><span class="n">3</span>その数字をブラウザのURL欄に入力</li>
+  </ol>
+</header>
+
+<main class="max-w-6xl mx-auto px-4 pb-16 grid gap-6 lg:grid-cols-2 items-start">
+
+  <!-- ============ セクションA ============ -->
+  <section class="bg-white rounded-3xl border border-[var(--line)] p-5 md:p-6" aria-labelledby="ha">
+    <h2 id="ha" class="text-xl md:text-2xl font-black"><i class="fa-solid fa-book-atlas text-[var(--dns)] mr-2"></i>本当の住所を調べよう</h2>
+    <p class="text-sm text-[var(--sub)] mt-1 font-medium">DNSルックアップツール</p>
+
+    <div class="bubble-wrap mt-4">
+      <div class="avatar bg-[var(--dns)]" aria-hidden="true"><i class="fa-solid fa-user-graduate"></i></div>
+      <div id="bubbleA" class="bubble bg-[var(--dns-soft)]" style="--tail:var(--dns-soft)" aria-live="polite">調べたいWebサイトのドメイン名を入力してみよう。</div>
+    </div>
+
+    <label for="domain" class="block mt-5 font-bold text-sm">調べたいWebサイトのURL（ドメイン名）</label>
+    <div class="mt-2 flex flex-col sm:flex-row gap-2">
+      <input id="domain" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false"
+        placeholder="例: google.com　yahoo.co.jp"
+        class="mono flex-1 min-w-0 rounded-xl border-2 border-[var(--line)] focus:border-[var(--dns)] outline-none px-4 py-3 text-base bg-[#F8FAFC]">
+      <button id="lookupBtn" class="btn bg-[var(--dns)] hover:bg-[#0B7375] text-white"><i class="fa-solid fa-magnifying-glass"></i>IPアドレスを調べる</button>
+    </div>
+    <div class="mt-2 flex flex-wrap gap-2 text-sm">
+      <span class="text-[var(--sub)] font-medium self-center">ためしに:</span>
+      <button class="sample mono px-3 py-1 rounded-full bg-[#EEF3F8] hover:bg-[var(--dns-soft)] font-medium" data-d="google.com">google.com</button>
+      <button class="sample mono px-3 py-1 rounded-full bg-[#EEF3F8] hover:bg-[var(--dns-soft)] font-medium" data-d="yahoo.co.jp">yahoo.co.jp</button>
+      <button class="sample mono px-3 py-1 rounded-full bg-[#EEF3F8] hover:bg-[var(--dns-soft)] font-medium" data-d="youtube.com">youtube.com</button>
+    </div>
+
+    <div id="resultA" class="mt-6 rounded-2xl border-2 border-dashed border-[var(--line)] p-4 min-h-[13rem] grid place-items-center text-center" aria-live="polite">
+      <p class="text-[var(--sub)] font-medium"><i class="fa-regular fa-hand-point-up text-2xl block mb-2"></i>ここに、調べた結果が表示されるよ</p>
+    </div>
+  </section>
+
+  <!-- ============ セクションB ============ -->
+  <section class="bg-white rounded-3xl border border-[var(--line)] p-5 md:p-6" aria-labelledby="hb">
+    <h2 id="hb" class="text-xl md:text-2xl font-black"><i class="fa-solid fa-globe text-[var(--web)] mr-2"></i>数字の住所でアクセスしよう</h2>
+    <p class="text-sm text-[var(--sub)] mt-1 font-medium">疑似Webブラウザ</p>
+
+    <div class="bubble-wrap mt-4">
+      <div class="avatar bg-[var(--web)]" aria-hidden="true"><i class="fa-solid fa-user-graduate"></i></div>
+      <div id="bubbleB" class="bubble bg-[var(--web-soft)]" style="--tail:var(--web-soft)" aria-live="polite">数字の住所（IPアドレス）を使って、直接サーバーにアクセスしてみよう。</div>
+    </div>
+
+    <div class="browser mt-5">
+      <div class="chrome">
+        <div class="flex items-center gap-1.5 px-1 pb-2" aria-hidden="true">
+          <span class="w-3 h-3 rounded-full bg-[#F26B5E]"></span><span class="w-3 h-3 rounded-full bg-[#F5BE4F]"></span><span class="w-3 h-3 rounded-full bg-[#62C554]"></span>
+        </div>
+        <div class="tab"><i class="fa-regular fa-file text-[var(--sub)]"></i><span id="tabTitle" class="truncate">新しいタブ</span></div>
+      </div>
+      <div class="toolbar">
+        <span class="text-[var(--sub)] px-1" aria-hidden="true"><i class="fa-solid fa-arrow-left"></i></span>
+        <span class="text-[var(--sub)] px-1" aria-hidden="true"><i class="fa-solid fa-arrow-right"></i></span>
+        <label class="urlbar">
+          <span class="sr-only">アクセス先のURL</span>
+          <i class="fa-solid fa-network-wired text-[var(--sub)] text-sm" aria-hidden="true"></i>
+          <input id="urlbar" class="mono" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="ここに数字の住所を入力">
+        </label>
+        <button id="goBtn" class="btn bg-[var(--web)] hover:bg-[#2C5BC4] text-white !px-4 !py-2">アクセス</button>
+      </div>
+      <div id="viewport" class="viewport">
+        <div class="absolute inset-0 grid place-items-center text-center p-6 text-[var(--sub)] font-medium">
+          <div><i class="fa-regular fa-window-maximize text-4xl block mb-3 text-[var(--line)]"></i>URL欄にIPアドレスを入れて、<br>「アクセス」を押してね</div>
+        </div>
+      </div>
+      <div id="statusBar" class="mono text-xs px-3 py-1.5 bg-[#F4F7FB] border-t border-[var(--line)] text-[var(--sub)]">待機中</div>
+    </div>
+
+    <details id="think" class="mt-5 rounded-xl bg-[#FFF6DC] border-l-4 border-[var(--amber)] p-4 hidden">
+      <summary class="font-bold cursor-pointer">問い：URLではなく「数字の列」でも、なぜ同じWebページが表示されるのか？</summary>
+      <p class="mt-3 text-sm leading-7 font-medium">まわりの人と話し合ってから、ここを開いて確かめよう。<br>
+      URLのドメイン名は、人間が覚えやすくした「あだ名」だよ。コンピュータ同士が通信するときの本当の宛先はIPアドレス。ふだんはブラウザがDNSに問い合わせて、ドメイン名をIPアドレスに変換してから、その数字のサーバーへアクセスしているんだ。だから数字を直接入れても、同じサーバーにたどり着けるよ。</p>
+    </details>
+  </section>
+</main>
+
+<footer class="max-w-6xl mx-auto px-4 pb-10 text-xs text-[var(--sub)] font-medium">
+  ※このシミュレータのIPアドレスは、入力した文字列から計算した学習用の擬似的な値です。実在するサーバーのIPアドレスとは異なります。ダミー画面は本物のサイトとは無関係です。
+</footer>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => s.replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  /* ---------- 解説ふきだし ---------- */
+  function say(id, html) {
+    const el = $(id);
+    el.innerHTML = html;
+    el.classList.remove('swap'); void el.offsetWidth; el.classList.add('swap');
+  }
+
+  /* ---------- 手順ストリップ ---------- */
+  function setStep(n) {
+    document.querySelectorAll('#steps .step').forEach((li) => {
+      const k = Number(li.dataset.step);
+      li.classList.toggle('on', k === n);
+      li.classList.toggle('done', k < n);
+    });
+  }
+
+  /* ---------- ドメイン名 → IPアドレス（擬似DNS） ---------- */
+  function hash32(str) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    h ^= h >>> 16; h = Math.imul(h, 2246822507) >>> 0;
+    h ^= h >>> 13; h = Math.imul(h, 3266489909) >>> 0;
+    h ^= h >>> 16;
+    return h >>> 0;
+  }
+  const FIRST_OCTETS = [13, 18, 23, 34, 35, 45, 52, 54, 64, 93, 104, 151, 157, 185, 203, 210];
+  const FIXED = { 'google.com': [142, 250], 'yahoo.co.jp': [182, 22], 'youtube.com': [142, 251] };
+
+  function normalizeDomain(input) {
+    let s = input.trim().toLowerCase();
+    s = s.replace(/^[a-z]+:\/\//, '').split(/[\/?#]/)[0].replace(/:\d+$/, '');
+    if (s.startsWith('www.')) s = s.slice(4);
+    return s;
+  }
+  function isDomain(s) {
+    return /^(?=.{3,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(s);
+  }
+  const ipToDomain = new Map();   // DNSで調べたIP → ドメイン
+  const domainToIp = new Map();
+
+  function resolveDomain(domain) {
+    if (domainToIp.has(domain)) return domainToIp.get(domain);
+    const h1 = hash32(domain), h2 = hash32(domain + '#dns');
+    let o;
+    if (domain === 'google.com') {
+      o = [142, 250, 190, 46];
+    } else if (FIXED[domain]) {
+      o = [FIXED[domain][0], FIXED[domain][1], h1 % 256, (h2 % 254) + 1];
+    } else {
+      o = [FIRST_OCTETS[h1 % FIRST_OCTETS.length], (h1 >>> 8) % 256, (h1 >>> 16) % 256, (h2 % 254) + 1];
+    }
+    let ip = o.join('.');
+    while (ipToDomain.has(ip) && ipToDomain.get(ip) !== domain) { o[3] = (o[3] % 254) + 1; ip = o.join('.'); }
+    domainToIp.set(domain, ip);
+    ipToDomain.set(ip, domain);
+    return ip;
+  }
+
+  /* ---------- セクションA ---------- */
+  const domainInput = $('domain'), lookupBtn = $('lookupBtn'), resultA = $('resultA');
+  let lookingUp = false;
+
+  domainInput.addEventListener('input', () => {
+    if (domainInput.value.trim()) say('bubbleA', '人間が覚えやすい<b>ドメイン名</b>だね。');
+  });
+  domainInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') lookup(); });
+  lookupBtn.addEventListener('click', lookup);
+  document.querySelectorAll('.sample').forEach((b) => b.addEventListener('click', () => {
+    domainInput.value = b.dataset.d;
+    say('bubbleA', '人間が覚えやすい<b>ドメイン名</b>だね。');
+    domainInput.focus();
+  }));
+
+  async function lookup() {
+    if (lookingUp) return;
+    const domain = normalizeDomain(domainInput.value);
+    if (!domain) {
+      say('bubbleA', 'まずはドメイン名を入力してみよう。（例: google.com）');
+      domainInput.focus(); return;
+    }
+    if (!isDomain(domain)) {
+      say('bubbleA', '「<b>' + esc(domain) + '</b>」はドメイン名の形になっていないみたい。<b>google.com</b> のように、ドット（.）でつなげて入力してね。');
+      return;
+    }
+    lookingUp = true; lookupBtn.disabled = true;
+    setStep(1);
+    say('bubbleA', 'インターネットの<b>電話帳（DNS）</b>に、IPアドレスを尋ねているよ...');
+    resultA.className = 'mt-6 rounded-2xl border-2 border-[var(--dns)] bg-[var(--dns-soft)] p-4 min-h-[13rem] grid place-items-center text-center';
+    resultA.innerHTML = `
+      <div class="w-full max-w-sm">
+        <div class="spinner mx-auto"></div>
+        <p id="loadA" class="mt-4 font-bold">DNSサーバーに問い合わせ中...</p>
+        <div class="track mt-4"><i></i></div>
+        <div class="flex justify-between text-xs text-[var(--sub)] mt-2 font-medium"><span><i class="fa-solid fa-laptop"></i> あなたのPC</span><span><i class="fa-solid fa-server"></i> DNSサーバー</span></div>
+      </div>`;
+    await sleep(1400);
+    const l = $('loadA'); if (l) l.textContent = 'ドメイン名に対応するIPアドレスを探しています...';
+    await sleep(1300);
+
+    const ip = resolveDomain(domain);
+    const octs = ip.split('.');
+    resultA.className = 'mt-6 rounded-2xl border-2 border-[var(--line)] p-4 min-h-[13rem] grid place-items-center text-center';
+    resultA.innerHTML = `
+      <div class="w-full">
+        <p class="font-bold text-[var(--sub)]"><span class="mono text-[var(--ink)]">${esc(domain)}</span> の本当の住所（IPアドレス）</p>
+        <div class="plate mono mt-3" id="plate" aria-label="IPアドレス ${ip}">
+          ${octs.map((o, i) => `<span class="oct" style="animation-delay:${i * 120}ms">${o}</span>${i < 3 ? '<span class="dot">.</span>' : ''}`).join('')}
+        </div>
+        <button id="copyBtn" class="btn mt-4 bg-[var(--ink)] hover:bg-[#1E3A5F] text-white"><i class="fa-regular fa-copy"></i><span>IPアドレスをコピーする</span></button>
+      </div>`;
+    $('copyBtn').addEventListener('click', () => copyIp(ip));
+    say('bubbleA', 'これがコンピュータ同士が通信するための<b>本当の住所</b>だよ！');
+    setStep(2);
+    lookingUp = false; lookupBtn.disabled = false;
+  }
+
+  async function copyIp(ip) {
+    let ok = false;
+    try { await navigator.clipboard.writeText(ip); ok = true; }
+    catch (e) {
+      const t = document.createElement('textarea');
+      t.value = ip; t.style.position = 'fixed'; t.style.opacity = '0';
+      document.body.appendChild(t); t.select();
+      try { ok = document.execCommand('copy'); } catch (_) {}
+      t.remove();
+    }
+    const btn = $('copyBtn'); if (!btn) return;
+    const span = btn.querySelector('span'), icon = btn.querySelector('i');
+    if (ok) {
+      span.textContent = 'コピーしました！'; icon.className = 'fa-solid fa-check';
+      say('bubbleA', 'コピーできたね。次は<b>疑似ブラウザのURL欄</b>に貼り付けて「アクセス」を押してみよう。');
+      setStep(3);
+    } else {
+      span.textContent = 'コピーできませんでした'; icon.className = 'fa-solid fa-triangle-exclamation';
+      say('bubbleA', '自動でコピーできなかったよ。数字を選択して、Ctrl+C（Macは⌘+C）でコピーしてね。');
+    }
+    setTimeout(() => { span.textContent = 'IPアドレスをコピーする'; icon.className = 'fa-regular fa-copy'; }, 2000);
+  }
+
+  /* ---------- セクションB ---------- */
+  const urlbar = $('urlbar'), goBtn = $('goBtn'), viewport = $('viewport'), statusBar = $('statusBar'), tabTitle = $('tabTitle');
+  let browsing = false;
+
+  const ipPattern = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+  function parseIp(s) {
+    const m = ipPattern.exec(s);
+    if (!m) return null;
+    const parts = m.slice(1).map(Number);
+    return parts.every((n) => n <= 255) ? parts.join('.') : null;
+  }
+  function normalizeUrl(input) {
+    return input.trim().replace(/^[a-z]+:\/\//i, '').split(/[\/?#]/)[0].replace(/:\d+$/, '');
+  }
+
+  urlbar.addEventListener('input', () => {
+    if (urlbar.value.trim()) {
+      say('bubbleB', '数字の住所（IPアドレス）を使って、直接サーバーにアクセスしてみよう。');
+      if (domainToIp.size) setStep(3);
+    }
+  });
+  urlbar.addEventListener('keydown', (e) => { if (e.key === 'Enter') access(); });
+  goBtn.addEventListener('click', access);
+
+  async function access() {
+    if (browsing) return;
+    const raw = normalizeUrl(urlbar.value);
+    if (!raw) { say('bubbleB', 'URL欄が空っぽだよ。セクションAで調べたIPアドレスを貼り付けてみよう。'); urlbar.focus(); return; }
+
+    let ip = parseIp(raw);
+    let viaDns = false;
+    if (!ip) {
+      const d = normalizeDomain(raw);
+      if (isDomain(d)) { ip = resolveDomain(d); viaDns = true; }
+      else {
+        showError('URLの形が正しくありません', '「' + esc(raw) + '」は、IPアドレス（例: 142.250.190.46）の形になっていません。数字を4つ、ドット（.）でつないで入力してね。', 'URLの形が正しくないよ。<b>数字.数字.数字.数字</b>の形で入力しよう。');
+        return;
+      }
+    }
+
+    browsing = true; goBtn.disabled = true;
+    tabTitle.textContent = '読み込み中...';
+    statusBar.textContent = '接続先: ' + ip + '  /  リクエスト送信中...';
+    say('bubbleB', viaDns
+      ? 'ドメイン名を入れたので、ブラウザが<b>裏で自動的にDNSに問い合わせて</b>、IPアドレスに変換してからアクセスしているよ。'
+      : 'IPアドレスの持ち主のWebサーバーに、リクエストを送っているよ...');
+    viewport.innerHTML = `
+      <div class="absolute inset-0 grid place-items-center text-center p-6">
+        <div class="w-full max-w-xs">
+          <div class="spinner web mx-auto"></div>
+          <p id="loadB" class="mt-4 font-bold">WebサーバーへHTTPリクエスト送信中...</p>
+          <div class="track web mt-4"><i></i></div>
+          <div class="flex justify-between text-xs text-[var(--sub)] mt-2 font-medium"><span><i class="fa-solid fa-laptop"></i> あなたのPC</span><span><i class="fa-solid fa-server"></i> <span class="mono">${esc(ip)}</span></span></div>
+        </div>
+      </div>`;
+    await sleep(1400);
+    const l = $('loadB'); if (l) l.textContent = 'サーバーからHTMLを受信中...';
+    await sleep(1200);
+
+    const domain = ipToDomain.get(ip);
+    if (!domain) {
+      viewport.innerHTML = notFoundHtml(ip);
+      tabTitle.textContent = 'サーバーが見つかりません';
+      statusBar.textContent = '接続先: ' + ip + '  /  404 Not Found';
+      say('bubbleB', 'このIPアドレスのサーバーは見つからなかったよ。セクションAで<b>DNSに調べてもらった数字</b>かな？ もう一度たしかめてみよう。');
+    } else {
+      const page = renderPage(domain);
+      viewport.innerHTML = page.html;
+      tabTitle.textContent = page.title;
+      statusBar.textContent = '接続先: ' + ip + '  /  200 OK';
+      say('bubbleB', 'サーバーから<b>HTML</b>が届き、ブラウザが画面を描画したよ！');
+      $('think').classList.remove('hidden');
+    }
+    browsing = false; goBtn.disabled = false;
+  }
+
+  function showError(title, msg, bubble) {
+    viewport.innerHTML = `<div class="p-8 text-center"><i class="fa-solid fa-circle-exclamation text-4xl text-[#E5484D]"></i><h3 class="mt-3 text-lg font-black">${title}</h3><p class="mt-2 text-sm text-[var(--sub)] font-medium">${msg}</p></div>`;
+    tabTitle.textContent = 'エラー';
+    statusBar.textContent = '入力エラー';
+    say('bubbleB', bubble);
+  }
+
+  function notFoundHtml(ip) {
+    return `
+      <div class="p-8 md:p-12 text-center" style="background:#F7F7F8;min-height:22rem">
+        <div class="mono font-black text-6xl md:text-7xl" style="color:#B8C1CE">404</div>
+        <h3 class="mt-3 text-xl font-black">サーバーが見つかりません</h3>
+        <p class="mt-3 text-sm text-[var(--sub)] font-medium leading-7"><span class="mono">${esc(ip)}</span> のWebサーバーには接続できませんでした。<br>IPアドレスが正しいか、もう一度確認してください。</p>
+      </div>`;
+  }
+
+  /* ---------- ダミーページ ---------- */
+  function renderPage(domain) {
+    const note = '<p class="text-[10px] text-center py-2" style="color:#8A97A8">※学習用のダミー画面です（本物のサイトとは関係ありません）</p>';
+    if (domain === 'google.com') {
+      return { title: '検索ページ（Google風）', html: `
+        <div style="min-height:22rem;background:#fff" class="flex flex-col">
+          <div class="flex justify-end gap-4 p-3 text-xs" style="color:#5f6368"><span>Gmail風</span><span>画像</span><i class="fa-solid fa-grip text-base"></i></div>
+          <div class="flex-1 grid place-items-center px-4 pb-6">
+            <div class="w-full max-w-md text-center">
+              <div class="font-black tracking-tight" style="font-size:3.2rem;font-family:'Zen Maru Gothic',sans-serif"><span style="color:#4285F4">G</span><span style="color:#EA4335">o</span><span style="color:#FBBC05">o</span><span style="color:#4285F4">g</span><span style="color:#34A853">l</span><span style="color:#EA4335">e</span></div>
+              <div class="mt-4 flex items-center gap-3 rounded-full border px-4 py-2.5" style="border-color:#dfe1e5"><i class="fa-solid fa-magnifying-glass" style="color:#9aa0a6"></i><span class="text-sm" style="color:#9aa0a6">検索、またはURLを入力</span></div>
+              <div class="mt-4 flex justify-center gap-2 text-xs"><span class="px-3 py-2 rounded" style="background:#f8f9fa">Google 検索</span><span class="px-3 py-2 rounded" style="background:#f8f9fa">I'm Feeling Lucky</span></div>
+            </div>
+          </div>${note}
+        </div>` };
+    }
+    if (domain === 'yahoo.co.jp') {
+      const news = ['【速報】高校生がプログラミング大会で全国優勝', '今日のお天気：全国的に晴れ、洗濯日和に', '話題の新作ゲーム、発売初日に品切れ続出', '学校のICT活用、最新事例を紹介'];
+      return { title: 'ポータルページ（Yahoo!風）', html: `
+        <div style="min-height:22rem;background:#fff">
+          <div class="flex items-center gap-3 px-4 py-3" style="background:#FF0033;color:#fff"><span class="font-black text-2xl italic">YAHOO!</span><span class="text-xs opacity-90">JAPAN風</span></div>
+          <div class="p-4">
+            <div class="flex rounded overflow-hidden border" style="border-color:#ddd"><span class="flex-1 px-3 py-2 text-sm" style="color:#999">キーワードを入力</span><span class="px-4 py-2 text-sm font-bold text-white" style="background:#FF0033">検索</span></div>
+            <h3 class="mt-4 mb-2 text-sm font-black border-l-4 pl-2" style="border-color:#FF0033">トピックス</h3>
+            <ul class="text-sm leading-8">${news.map((n) => `<li class="border-b" style="border-color:#eee"><i class="fa-solid fa-angle-right mr-1" style="color:#FF0033"></i>${n}</li>`).join('')}</ul>
+          </div>${note}
+        </div>` };
+    }
+    if (domain === 'youtube.com') {
+      const cards = ['ネットワークのしくみ入門', 'IPアドレスって何？', 'DNSを3分で解説', '身近なインターネット実験'];
+      return { title: '動画サイト（YouTube風）', html: `
+        <div style="min-height:22rem;background:#fff">
+          <div class="flex items-center gap-2 px-4 py-3 border-b" style="border-color:#eee">
+            <span class="inline-grid place-items-center rounded-lg text-white text-xs w-8 h-6" style="background:#FF0000"><i class="fa-solid fa-play"></i></span>
+            <span class="font-black text-lg tracking-tight">Tube風</span>
+            <span class="flex-1 mx-3 rounded-full border px-3 py-1 text-xs" style="border-color:#ddd;color:#999">検索</span>
+          </div>
+          <div class="p-4 grid grid-cols-2 gap-3">
+            ${cards.map((c, i) => `<div><div class="rounded-lg grid place-items-center text-white text-2xl" style="height:5.5rem;background:${['#3B6FE0','#0F8B8D','#7A5AF8','#E5484D'][i]}"><i class="fa-solid fa-circle-play"></i></div><p class="mt-1 text-xs font-bold leading-5">${c}</p></div>`).join('')}
+          </div>${note}
+        </div>` };
+    }
+    const d = esc(domain);
+    return { title: d, html: `
+      <div style="min-height:22rem;background:linear-gradient(160deg,#F4F8FF,#fff 60%)" class="flex flex-col">
+        <div class="px-5 py-3 border-b flex items-center gap-2 font-black" style="border-color:#E3EAF4"><i class="fa-solid fa-house text-[var(--web)]"></i><span class="mono text-sm">${d}</span></div>
+        <div class="flex-1 grid place-items-center p-8 text-center">
+          <div>
+            <h3 class="text-2xl md:text-3xl font-black leading-snug">ようこそ！<br><span class="mono break-all">${d}</span> のWebページです</h3>
+            <p class="mt-4 text-sm text-[var(--sub)] font-medium">ここは学習用の汎用ダミーページです。</p>
+          </div>
+        </div>${note}
+      </div>` };
+  }
+})();
+</script>
+</body>
+</html>
